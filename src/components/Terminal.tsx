@@ -150,10 +150,11 @@ const Terminal: React.FC = () => {
   };
 
   useEffect(() => {
-    if (terminalRef.current) {
+    // Only auto-scroll if user is near the bottom or if it's a new command execution
+    if (terminalRef.current && isTyping) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
-  }, [lines]);
+  }, [lines, isTyping]);
 
   // Focus input when clicking on terminal
   const handleTerminalClick = () => {
