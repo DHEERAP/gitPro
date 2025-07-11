@@ -7,6 +7,7 @@ import GitCommands from './components/GitCommands';
 import Terminal from './components/Terminal';
 import Quiz from './components/Quiz';
 import Footer from './components/Footer';
+import GeminiAISection from "./components/GeminiAISection";
 
 function App() {
   const commandsRef = useRef<HTMLDivElement>(null);
@@ -33,6 +34,7 @@ function App() {
         
         <div id="quiz">
           <Quiz />
+          <GeminiAISection />
         </div>
         
         <Footer />
