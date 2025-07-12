@@ -288,7 +288,6 @@ const Terminal: React.FC = () => {
                 placeholder="Enter a git command..."
                 className="flex-1 bg-transparent text-white font-mono focus:outline-none placeholder-gray-500"
                 disabled={isTyping}
-                autoFocus
               />
               <button
                 type="submit"

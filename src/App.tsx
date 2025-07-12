@@ -7,7 +7,7 @@ import GitCommands from './components/GitCommands';
 import Terminal from './components/Terminal';
 import Quiz from './components/Quiz';
 import Footer from './components/Footer';
-import GeminiAISection from "./components/GeminiAISection";
+import GeminiScenarioFrame from "./components/GeminiScenarioFrame";
 
 function App() {
   const commandsRef = useRef<HTMLDivElement>(null);
@@ -27,17 +27,23 @@ function App() {
         <div ref={commandsRef} id="commands">
           <GitCommands />
         </div>
+
+         {/* <div id="gemini">
+          <GeminiScenarioFrame />
+          </div> */}
+       
+      
         
         <div id="terminal">
+        <GeminiScenarioFrame />
           <Terminal />
         </div>
         
         <div id="quiz">
           <Quiz />
-          <GeminiAISection />
+       
+          <Footer />
         </div>
-        
-        <Footer />
       </div>
     </ThemeProvider>
   );
