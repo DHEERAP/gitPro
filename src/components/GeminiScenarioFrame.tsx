@@ -1,204 +1,11 @@
 
-// // 
-// import React, { useState, useEffect, useRef } from "react";
-// // @ts-ignore
-// import { GoogleGenerativeAI } from "@google/generative-ai";
-
-// const GEMINI_API_KEY_STORAGE = "gemini_api_key";
-// const PROMPT = `Generate a random Git or GitHub scenario for me to practice. Each time, follow this structure:\n\n🎯 Title of the scenario (short and clear)\n🔥 Difficulty level: Easy, Medium, or Advanced\n📝 Short description of the task (1–2 lines)\n💡 Bullet-point hints (clear, step-by-step, minimum 3 steps)\n\nEach time, randomly choose the difficulty: sometimes Easy, sometimes Medium, sometimes Advanced. Do not always return Medium.\n\nMake sure each scenario is different every time and includes concepts like:\n- Branching\n- Commits\n- Pull requests\n- Rebasing\n- Merging\n- Conflict resolution\n- Remote setups\n- GitHub workflows\n\nAvoid repeating the same task. Vary the difficulty, commands, and use cases to help me learn Git better.`;
-
-// function parseScenario(text: string) {
-//   const titleMatch = text.match(/🎯\s*(.*)/);
-//   const diffMatch = text.match(/🔥\s*Difficulty level:\s*(.*)/);
-//   const descMatch = text.match(/📝\s*(.*)/);
-//   const hintsMatch = text.match(/💡[\s\S]*?(?:\n|^)([\s\S]*)/);
-//   let hints: string[] = [];
-//   if (hintsMatch && hintsMatch[1]) {
-//     hints = hintsMatch[1]
-//       .split(/\n|\r/)
-//       .map(h => h.replace(/^[-•\d.\s]+/, "").trim())
-//       .filter(Boolean);
-//   }
-//   return {
-//     title: titleMatch ? titleMatch[1].trim() : "Git Scenario",
-//     difficulty: diffMatch ? diffMatch[1].trim() : "Unknown",
-//     description: descMatch ? descMatch[1].trim() : "",
-//     hints,
-//   };
-// }
-
-// const GeminiScenarioFrame: React.FC = () => {
-//   const [apiKey, setApiKey] = useState<string>("");
-//   const [inputKey, setInputKey] = useState<string>("");
-//   const [hasKey, setHasKey] = useState<boolean>(false);
-//   const [scenario, setScenario] = useState<any>(null);
-//   const [loading, setLoading] = useState<boolean>(false);
-//   const [error, setError] = useState<string>("");
-//   const [showHints, setShowHints] = useState<boolean>(false);
-//   const [rawError, setRawError] = useState<any>(null);
-//   const inputRef = useRef<HTMLInputElement>(null);
-
-//   useEffect(() => {
-//     const storedKey = localStorage.getItem(GEMINI_API_KEY_STORAGE);
-//     if (storedKey) {
-//       setApiKey(storedKey);
-//       setHasKey(true);
-//     }
-//   }, []);
-
-//   const handleSaveKey = () => {
-//     const cleanKey = inputKey.trim();
-//     if (cleanKey) {
-//       localStorage.setItem(GEMINI_API_KEY_STORAGE, cleanKey);
-//       setApiKey(cleanKey);
-//       setHasKey(true);
-//       setInputKey("");
-//       setError("");
-//       setRawError(null);
-//     } else {
-//       setError("Please enter a valid API key.");
-//     }
-//   };
-
-//   const handleRemoveKey = () => {
-//     localStorage.removeItem(GEMINI_API_KEY_STORAGE);
-//     setApiKey("");
-//     setHasKey(false);
-//     setScenario(null);
-//     setError("");
-//     setRawError(null);
-//   };
-
-//   const handleGenerate = async () => {
-//     setError("");
-//     setRawError(null);
-//     setScenario(null);
-//     setShowHints(false);
-//     setLoading(true);
-//     try {
-//       const key = localStorage.getItem(GEMINI_API_KEY_STORAGE);
-//       if (!key) {
-//         setError("No API key found. Please enter and save your Gemini API key first.");
-//         setLoading(false);
-//         return;
-//       }
-//       setApiKey(key);
-//       const genAI = new GoogleGenerativeAI(key);
-//       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-//       const result = await model.generateContent(PROMPT);
-//       const text = await result.response.text();
-//       setScenario(parseScenario(text));
-//     } catch (err: any) {
-//       setError("Failed to get scenario. " + (err?.message || "Please check your API key or try again."));
-//       setRawError(err);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   const apiKeyBox = (
-//     <div className="bg-gray-900/90 border border-gray-700 rounded-xl p-6 flex flex-col items-center w-full max-w-xs shadow-xl mb-4">
-//       <span className="text-2xl mb-2">🔑</span>
-//       <input
-//         ref={inputRef}
-//         type="password"
-//         className="bg-gray-800 text-gray-200 px-4 py-2 rounded w-full focus:outline-none focus:ring-2 focus:ring-blue-400 text-base text-center tracking-wide mb-2"
-//         placeholder="Paste Gemini API key"
-//         value={inputKey}
-//         onChange={e => setInputKey(e.target.value)}
-//         onKeyDown={e => e.key === "Enter" && handleSaveKey()}
-//       />
-//       <button
-//         className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded transition w-full text-lg shadow"
-//         onClick={handleSaveKey}
-//       >
-//         Save API Key
-//       </button>
-//       {error && <div className="text-red-400 mt-2 text-sm">{error}</div>}
-//       {rawError && (
-//         <details className="text-red-300 text-xs mt-1 w-full">
-//           <summary>Show technical error</summary>
-//           <pre className="whitespace-pre-wrap break-all">{JSON.stringify(rawError, null, 2)}</pre>
-//         </details>
-//       )}
-//     </div>
-//   );
-
-//   return (
-//     <section className="flex flex-col md:flex-row items-center justify-center w-full py-8">
-//       {!hasKey && <div className="md:mr-8 mb-4 md:mb-0">{apiKeyBox}</div>}
-//       <div className="bg-gradient-to-br from-gray-900/90 to-gray-800/80 rounded-xl p-8 flex flex-col items-center w-full max-w-2xl shadow-2xl border border-gray-700">
-//         <div className="flex items-center w-full mb-4 relative">
-//           <span className="text-2xl mr-2 text-blue-400">🧩</span>
-//           <span className="font-bold text-2xl text-white mr-auto">Practice a Git Scenario</span>
-//           {hasKey && (
-//             <button
-//               className="absolute right-0 top-1 text-red-400 text-sm underline hover:text-red-300"
-//               onClick={handleRemoveKey}
-//             >
-//               Change API Key
-//             </button>
-//           )}
-//         </div>
-//         {hasKey && (
-//           <button
-//             className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-2 rounded transition mb-4 w-full max-w-xs text-lg shadow"
-//             onClick={handleGenerate}
-//             disabled={loading}
-//           >
-//             {loading ? "Generating..." : "Generate New Task"}
-//           </button>
-//         )}
-//         {scenario && (
-//           <div className="w-full mt-2">
-//             <div className="flex items-center mb-2">
-//               <span className="font-bold text-lg text-white mr-2">{scenario.title}</span>
-//               <span className={`px-2 py-1 rounded text-xs font-semibold ml-2 ${scenario.difficulty === "Easy" ? "bg-green-700 text-green-200" : scenario.difficulty === "Medium" ? "bg-yellow-700 text-yellow-200" : "bg-red-700 text-red-200"}`}>{scenario.difficulty}</span>
-//             </div>
-//             <div className="text-gray-300 mb-2 text-base">{scenario.description}</div>
-//             <div className="mb-2">
-//               <button
-//                 className="flex items-center text-blue-400 hover:text-blue-300 text-base font-semibold focus:outline-none"
-//                 onClick={() => setShowHints(h => !h)}
-//               >
-//                 <span className="mr-1">💡</span> Hints
-//                 <svg className={`ml-1 w-4 h-4 transition-transform ${showHints ? "rotate-180" : "rotate-0"}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-//               </button>
-//               {showHints && (
-//                 <ul className="bg-gray-800 rounded mt-2 p-3 text-gray-200 text-sm list-decimal list-inside">
-//                   {scenario.hints.map((hint: string, idx: number) => (
-//                     <li key={idx}>{hint}</li>
-//                   ))}
-//                 </ul>
-//               )}
-//             </div>
-//           </div>
-//         )}
-//         {error && hasKey && <div className="text-red-400 mt-2 text-sm w-full">{error}</div>}
-//         {rawError && hasKey && (
-//           <details className="text-red-300 text-xs mt-1 w-full">
-//             <summary>Show technical error</summary>
-//             <pre className="whitespace-pre-wrap break-all">{JSON.stringify(rawError, null, 2)}</pre>
-//           </details>
-//         )}
-//         {!scenario && hasKey && !loading && (
-//           <div className="text-gray-400 text-sm mt-2">Click "Generate New Task" to get a new scenario!</div>
-//         )}
-//       </div>
-//     </section>
-//   );
-// };
-
-// export default GeminiScenarioFrame;
+// https://github.com/DHEERAP/gitPro
 
 
-
-
-
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 // @ts-ignore
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { Key, Lightbulb, RefreshCw, Terminal, GitBranch, ChevronDown, ChevronUp } from "lucide-react";
+import { Lightbulb, RefreshCw, Terminal, GitBranch, ChevronDown, ChevronUp } from "lucide-react";
 
 const GEMINI_API_KEY_STORAGE = "gemini_api_key";
 // const PROMPT = `Generate a random Git or GitHub scenario for me to practice. Each time, follow this structure:\n\n🎯 Title of the scenario (short and clear)\n🔥 Difficulty level: Easy, Medium, or Advanced\n📝 Short description of the task (1–2 lines)\n💡 Bullet-point hints (clear, step-by-step, minimum 3 steps)\n\nEach time, randomly choose the difficulty: sometimes Easy, sometimes Medium, sometimes Advanced. Do not always return Medium.\n\nMake sure each scenario is different every time and includes concepts like:\n- Branching\n- Commits\n- Pull requests\n- Rebasing\n- Merging\n- Conflict resolution\n- Remote setups\n- GitHub workflows\n\nAvoid repeating the same task. Vary the difficulty, commands, and use cases to help me learn Git better.`;
@@ -246,7 +53,6 @@ function parseScenario(text: string) {
 }
 
 const GeminiScenarioFrame: React.FC = () => {
-  const [apiKey, setApiKey] = useState<string>("");
   const [inputKey, setInputKey] = useState<string>("");
   const [scenario, setScenario] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -261,7 +67,7 @@ const GeminiScenarioFrame: React.FC = () => {
   useEffect(() => {
     // Only sync apiKey state with localStorage, do not clear it on every load
     const storedKey = (localStorage.getItem(GEMINI_API_KEY_STORAGE) || '').trim();
-    setApiKey(storedKey);
+    // setApiKey(storedKey); // Removed as per edit hint
     if (!storedKey) {
       setScenario(null);
       setError("");
@@ -274,7 +80,7 @@ const GeminiScenarioFrame: React.FC = () => {
     const cleanKey = inputKey.trim();
     if (cleanKey) {
       localStorage.setItem(GEMINI_API_KEY_STORAGE, cleanKey);
-      setApiKey(cleanKey);
+      // setApiKey(cleanKey); // Removed as per edit hint
       setInputKey("");
       setError("");
       setRawError(null);
@@ -286,7 +92,7 @@ const GeminiScenarioFrame: React.FC = () => {
   // Reset API key and show input page again
   const handleResetKey = () => {
     localStorage.removeItem(GEMINI_API_KEY_STORAGE);
-    setApiKey("");
+    // setApiKey(""); // Removed as per edit hint
     setScenario(null);
     setError("");
     setRawError(null);
@@ -306,7 +112,7 @@ const GeminiScenarioFrame: React.FC = () => {
         setLoading(false);
         return;
       }
-      setApiKey(key);
+      // setApiKey(key); // Removed as per edit hint
       const genAI = new GoogleGenerativeAI(key);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const result = await model.generateContent(PROMPT);

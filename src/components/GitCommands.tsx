@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronRight, Copy, Star, Lightbulb, Play, Terminal } from 'lucide-react';
-import { gitCommands, GitCommand } from '../data/gitCommands';
+import { ChevronRight, Copy, Star, Lightbulb, Play, Terminal } from 'lucide-react';
+import { gitCommands } from '../data/gitCommands';
 import toast from 'react-hot-toast';
 
 const GitCommands: React.FC = () => {
