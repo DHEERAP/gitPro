@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal as TerminalIcon, Play, RotateCcw, User, Copy, Download } from 'lucide-react';
 import { GitSimulator } from '../utils/gitSimulator';
 import toast from 'react-hot-toast';
+// Add Gemini feedback integration
+// @ts-ignore
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 interface TerminalLine {
   id: string;
@@ -23,6 +26,12 @@ const Terminal: React.FC = () => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Solution path tracking
+  const [solutionPath, setSolutionPath] = useState<string[]>([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [scenarioComplete, setScenarioComplete] = useState(false);
+  const [scenarioLoaded, setScenarioLoaded] = useState(false);
+
   const addLine = (type: 'command' | 'output' | 'error', content: string) => {
     const newLine: TerminalLine = {
       id: Date.now().toString() + Math.random(),
@@ -33,91 +42,202 @@ const Terminal: React.FC = () => {
     setLines(prev => [...prev, newLine]);
   };
 
-  const executeCommand = (command: string) => {
-    if (!command.trim()) return;
+  // Helper: normalize commands for comparison
+  const normalizeCmd = (cmd: string) => cmd.replace(/\s+/g, ' ').trim().toLowerCase();
+  // Helper: clean up Gemini's output (remove backticks, quotes, trim)
+  const cleanCommand = (cmd: string) => (cmd || '').replace(/[`'\"]/g, '').trim();
+  // Helper: extract command type/structure for relaxed checking
+  function getCommandType(cmd: string) {
+    const norm = cmd.trim().toLowerCase();
+    if (norm.startsWith('git add')) return 'git add';
+    if (norm.startsWith('git commit -m')) return 'git commit -m';
+    if (norm.startsWith('git checkout')) return 'git checkout';
+    if (norm.startsWith('git merge')) return 'git merge';
+    if (norm.startsWith('git branch')) return 'git branch';
+    if (norm.startsWith('git switch')) return 'git switch';
+    if (norm.startsWith('git log')) return 'git log';
+    if (norm.startsWith('git status')) return 'git status';
+    if (norm.startsWith('git init')) return 'git init';
+    if (norm.startsWith('git push')) return 'git push';
+    if (norm.startsWith('git pull')) return 'git pull';
+    if (norm.startsWith('git fetch')) return 'git fetch';
+    if (norm.startsWith('git clone')) return 'git clone';
+    if (norm.startsWith('git stash')) return 'git stash';
+    if (norm.startsWith('git reset')) return 'git reset';
+    if (norm.startsWith('git revert')) return 'git revert';
+    if (norm.startsWith('git rebase')) return 'git rebase';
+    if (norm.startsWith('git cherry-pick')) return 'git cherry-pick';
+    if (norm.startsWith('git tag')) return 'git tag';
+    if (norm.startsWith('git diff')) return 'git diff';
+    if (norm.startsWith('git show')) return 'git show';
+    if (norm.startsWith('git config')) return 'git config';
+    if (norm.startsWith('git bisect')) return 'git bisect';
+    // fallback: first 2-3 words
+    return norm.split(' ').slice(0, 3).join(' ');
+  }
+
+  // Gemini: Extract command from hint
+  const getExpectedCommandFromHint = async (hint: string) => {
+    const key = (typeof window !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '') : '').trim();
+    if (!key) return null;
+    try {
+      const genAI = new GoogleGenerativeAI(key);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const prompt = `Given this Git learning step: \"${hint}\", what is the exact Git command the user should run? Reply with only the command.`;
+      const result = await model.generateContent(prompt);
+      const text = await result.response.text();
+      return text.split('\n')[0].trim(); // Only the first line, trimmed
+    } catch (err) {
+      return null;
+    }
+  };
+
+  // Gemini: Extract full solution path from all hints
+  const getSolutionPathFromHints = async (hints: string[]) => {
+    const key = (typeof window !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '') : '').trim();
+    if (!key) return [];
+    try {
+      const genAI = new GoogleGenerativeAI(key);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const prompt = `Given these Git learning steps (one per line), reply with the exact Git command for each step, one per line, in order. Reply with only the commands, no extra text. Ignore any steps that are not actual Git commands (like creating files or adding functions).\n${hints.map((h, i) => `${i + 1}. ${h}`).join('\n')}`;
+      const result = await model.generateContent(prompt);
+      const text = await result.response.text();
+      // Only keep lines that start with 'git '
+      return text.split('\n').map(line => line.replace(/[`'\"]/g, '').trim()).filter(line => line.startsWith('git '));
+    } catch (err) {
+      return [];
+    }
+  };
+
+  // Load solution path from scenario
+  useEffect(() => {
+    const loadScenario = async () => {
+      const scenarioRaw = (typeof window !== 'undefined' && localStorage.getItem('gemini_scenario'));
+      let scenario = null;
+      try { scenario = scenarioRaw ? JSON.parse(scenarioRaw) : null; } catch { scenario = null; }
+      let commands: string[] = [];
+      if (scenario && Array.isArray(scenario.solution)) {
+        commands = scenario.solution.map((cmd: string) => cmd.trim());
+      } else if (scenario && Array.isArray(scenario.hints)) {
+        // Use Gemini to extract the full solution path from all hints
+        commands = await getSolutionPathFromHints(scenario.hints);
+      }
+      // Ensure 'git init' is the first command
+      if (commands.length === 0 || normalizeCmd(commands[0]) !== 'git init') {
+        commands = ['git init', ...commands];
+      }
+      // Clear all old lines and reset state for new scenario
+      setLines([
+        { id: '1', type: 'output', content: 'Welcome to the Git Learning Terminal!', timestamp: Date.now() },
+        { id: '2', type: 'output', content: 'This is a fully functional Git simulator. Try "git init" to start!', timestamp: Date.now() + 1 },
+        { id: '3', type: 'output', content: 'Type "help" to see available commands.', timestamp: Date.now() + 2 },
+      ]);
+      // If auto-running git init, skip the first step for the user
+      let initialStep = 0;
+      if (commands.length > 0 && normalizeCmd(commands[0]) === 'git init') {
+        initialStep = 1;
+      }
+      setSolutionPath(commands);
+      setCurrentStep(initialStep);
+      setScenarioComplete(false);
+      setScenarioLoaded(false);
+      // Automatically run 'git init' for the user ONLY when a new scenario is generated
+      setTimeout(() => {
+        addLine('command', '$ git init');
+        addLine('output', '[Tutor]: Initialized a new Git repository.');
+        setScenarioLoaded(true);
+      }, 100);
+    };
+    loadScenario();
+  }, [localStorage.getItem('gemini_scenario')]);
+
+  // Remove Gemini feedback integration for step-by-step checking
+
+  const executeCommand = async (command: string) => {
+    if (!command.trim() || scenarioComplete || !scenarioLoaded) return;
 
     addLine('command', `$ ${command}`);
     setIsTyping(true);
 
-    // Simulate command execution delay
-    setTimeout(() => {
+    setTimeout(async () => {
       if (command === 'clear') {
         setLines([]);
         setIsTyping(false);
+        setScenarioComplete(false);
+        setCurrentStep(0);
+        setScenarioLoaded(false);
         return;
       }
 
       if (command === 'help') {
-        const helpText = `Available commands:
-  Git Commands:
-    git init                 - Initialize a new Git repository
-    git status              - Show the working tree status
-    git add <file>          - Add file contents to the index
-    git add .               - Add all files to the index
-    git commit -m "msg"     - Record changes to the repository
-    git log                 - Show commit logs
-    git log --oneline       - Show commit logs in one line format
-    git branch              - List branches
-    git branch <name>       - Create a new branch
-    git branch -d <name>    - Delete a branch
-    git checkout <branch>   - Switch branches
-    git checkout -b <name>  - Create and switch to new branch
-    git switch <branch>     - Switch branches (newer syntax)
-    git switch -c <name>    - Create and switch to new branch
-    git merge <branch>      - Merge a branch
-    git remote              - List remotes
-    git remote -v           - List remotes with URLs
-    git remote add <name> <url> - Add a remote
-    git push <remote> <branch> - Push changes to remote
-    git pull <remote> <branch> - Pull changes from remote
-    git fetch <remote>      - Fetch changes from remote
-    git clone <url>         - Clone a repository
-    git stash               - Stash changes
-    git stash list          - List stashes
-    git stash pop           - Apply and remove latest stash
-    git reset HEAD~1        - Reset to previous commit
-    git reset --soft HEAD~1 - Reset keeping changes staged
-    git reset --hard HEAD~1 - Reset discarding all changes
-    git revert <commit>     - Revert a commit
-    git rebase <branch>     - Rebase current branch
-    git cherry-pick <commit> - Cherry-pick a commit
-    git tag                 - List tags
-    git tag <name>          - Create a tag
-    git tag -d <name>       - Delete a tag
-    git diff                - Show changes
-    git diff --staged       - Show staged changes
-    git show <commit>       - Show commit details
-    git config --list       - List configuration
-    git config <key> <value> - Set configuration
-    git bisect start        - Start bisecting
-    git bisect good/bad     - Mark commits during bisect
-
-  System Commands:
-    clear                   - Clear the terminal
-    ls                      - List files
-    pwd                     - Show current directory
-    help                    - Show this help message`;
-        
+        const helpText = `Available commands:\n  Git Commands:\n    git init                 - Initialize a new Git repository\n    git status              - Show the working tree status\n    git add <file>          - Add file contents to the index\n    git add .               - Add all files to the index\n    git commit -m \"msg\"     - Record changes to the repository\n    git log                 - Show commit logs\n    git log --oneline       - Show commit logs in one line format\n    git branch              - List branches\n    git branch <name>       - Create a new branch\n    git branch -d <name>    - Delete a branch\n    git checkout <branch>   - Switch branches\n    git checkout -b <name>  - Create and switch to new branch\n    git switch <branch>     - Switch branches (newer syntax)\n    git switch -c <name>    - Create and switch to new branch\n    git merge <branch>      - Merge a branch\n    git remote              - List remotes\n    git remote -v           - List remotes with URLs\n    git remote add <name> <url> - Add a remote\n    git push <remote> <branch> - Push changes to remote\n    git pull <remote> <branch> - Pull changes from remote\n    git fetch <remote>      - Fetch changes from remote\n    git clone <url>         - Clone a repository\n    git stash               - Stash changes\n    git stash list          - List stashes\n    git stash pop           - Apply and remove latest stash\n    git reset HEAD~1        - Reset to previous commit\n    git reset --soft HEAD~1 - Reset keeping changes staged\n    git reset --hard HEAD~1 - Reset discarding all changes\n    git revert <commit>     - Revert a commit\n    git rebase <branch>     - Rebase current branch\n    git cherry-pick <commit> - Cherry-pick a commit\n    git tag                 - List tags\n    git tag <name>          - Create a tag\n    git tag -d <name>       - Delete a tag\n    git diff                - Show changes\n    git diff --staged       - Show staged changes\n    git show <commit>       - Show commit details\n    git config --list       - List configuration\n    git config <key> <value> - Set configuration\n    git bisect start        - Start bisecting\n    git bisect good/bad     - Mark commits during bisect`;
         addLine('output', helpText);
         setIsTyping(false);
         return;
       }
 
-      const result = gitSimulator.executeCommand(command);
-      
-      if (result.output === 'CLEAR_TERMINAL') {
-        setLines([]);
-      } else if (result.output) {
-        addLine(result.error ? 'error' : 'output', result.output);
+      // Tutor logic: check against solution path or Gemini-extracted command
+      if (solutionPath.length > 0 && currentStep < solutionPath.length) {
+        const expected = normalizeCmd(solutionPath[currentStep]);
+        const userCmd = normalizeCmd(command);
+        // Relaxed: compare only command type/structure
+        const expectedType = getCommandType(expected);
+        const userType = getCommandType(userCmd);
+        if (expectedType && userType && expectedType === userType) {
+          // Correct step
+          if (currentStep + 1 === solutionPath.length) {
+            setScenarioComplete(true);
+            addLine('output', '[Tutor]: Correct! You have completed the scenario!');
+            // Show congratulatory popup (set a flag or trigger a modal here if you want)
+          } else {
+            setCurrentStep(currentStep + 1);
+            addLine('output', '[Tutor]: Correct! You are on the right track.');
+          }
+        } else {
+          addLine('error', `[Tutor]: Incorrect command. The correct command for this step is: ${solutionPath[currentStep]}`);
+        }
+        setIsTyping(false);
+        return;
       }
-      
+
+      // If no solutionPath but hints are present, use Gemini to extract the command for the current step
+      const scenarioRaw = (typeof window !== 'undefined' && localStorage.getItem('gemini_scenario'));
+      let scenario = null;
+      try { scenario = scenarioRaw ? JSON.parse(scenarioRaw) : null; } catch { scenario = null; }
+      if (scenario && Array.isArray(scenario.hints) && scenario.hints[currentStep]) {
+        const hint = scenario.hints[currentStep];
+        const expectedCmd = await getExpectedCommandFromHint(hint);
+        const userCmd = normalizeCmd(command);
+        const expectedClean = normalizeCmd(cleanCommand(expectedCmd || ''));
+        if (expectedClean && userCmd === expectedClean) {
+          // Correct step
+          if (currentStep + 1 === scenario.hints.length) {
+            setScenarioComplete(true);
+            addLine('output', '[Tutor]: Correct! You have completed the scenario!');
+          } else {
+            setCurrentStep(currentStep + 1);
+            addLine('output', '[Tutor]: Correct! You are on the right track.');
+          }
+        } else {
+          addLine('error', `[Tutor]: Incorrect command. The correct command for this step is: ${cleanCommand(expectedCmd || '') || hint}`);
+        }
+        setIsTyping(false);
+        return;
+      }
+
+      // If scenario is complete, do not process further
+      if (scenarioComplete) {
+        setIsTyping(false);
+        return;
+      }
+
       setIsTyping(false);
     }, Math.random() * 500 + 300); // Random delay between 300-800ms
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentCommand.trim() && !isTyping) {
+    if (currentCommand.trim() && !isTyping && scenarioLoaded && !scenarioComplete) {
       executeCommand(currentCommand);
       setCurrentCommand('');
     }
@@ -156,6 +276,25 @@ const Terminal: React.FC = () => {
     }
   }, [lines, isTyping]);
 
+  // Listen for scenario reset event
+  useEffect(() => {
+    const resetHandler = () => {
+      setLines([
+        { id: '1', type: 'output', content: 'Welcome to the Git Learning Terminal!', timestamp: Date.now() },
+        { id: '2', type: 'output', content: 'This is a fully functional Git simulator. Try "git init" to start!', timestamp: Date.now() + 1 },
+        { id: '3', type: 'output', content: 'Type "help" to see available commands.', timestamp: Date.now() + 2 },
+      ]);
+      setCurrentCommand('');
+      setIsTyping(false);
+      setScenarioComplete(false);
+      setCurrentStep(0); // Reset current step on scenario reset
+      setScenarioLoaded(false);
+      // Optionally, reset the GitSimulator instance if needed
+    };
+    window.addEventListener('reset-terminal', resetHandler);
+    return () => window.removeEventListener('reset-terminal', resetHandler);
+  }, []);
+
   // Focus input when clicking on terminal
   const handleTerminalClick = () => {
     inputRef.current?.focus();
@@ -187,6 +326,15 @@ const Terminal: React.FC = () => {
           viewport={{ once: true }}
           className="bg-gray-900 dark:bg-gray-950 rounded-lg shadow-2xl border border-gray-700 overflow-hidden"
         >
+          {/* Show congrats card if scenario is complete */}
+          {scenarioComplete && (
+            <div className="flex flex-col items-center justify-center py-12 bg-green-900/80">
+              <div className="text-5xl mb-4">🎉</div>
+              <h3 className="text-3xl font-bold text-green-200 mb-2">Congratulations!</h3>
+              <p className="text-lg text-green-100 mb-4">You have completed the scenario successfully.</p>
+              {/* You can add a popup/modal here for extra effect */}
+            </div>
+          )}
           {/* Terminal header */}
           <div className="bg-gray-800 dark:bg-gray-900 px-6 py-4 border-b border-gray-700 flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -287,11 +435,11 @@ const Terminal: React.FC = () => {
                 onChange={(e) => setCurrentCommand(e.target.value)}
                 placeholder="Enter a git command..."
                 className="flex-1 bg-transparent text-white font-mono focus:outline-none placeholder-gray-500"
-                disabled={isTyping}
+                disabled={isTyping || !scenarioLoaded || scenarioComplete}
               />
               <button
                 type="submit"
-                disabled={isTyping || !currentCommand.trim()}
+                disabled={isTyping || !currentCommand.trim() || !scenarioLoaded || scenarioComplete}
                 className="p-2 text-green-400 hover:text-green-300 disabled:text-gray-600 disabled:cursor-not-allowed transition-colors"
                 title="Execute command"
               >

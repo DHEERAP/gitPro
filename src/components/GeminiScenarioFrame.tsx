@@ -12,41 +12,46 @@ const GEMINI_API_KEY_STORAGE = "gemini_api_key";
 const PROMPT = `Generate a unique Git or GitHub scenario for me to practice. Follow this structure strictly:
 
 🎯 Title of the scenario (short and clear)
-🔥 Difficulty level: Easy, Medium, or Advanced (randomly vary)
-📝 Short description of the task (1–2 lines)
+🔥 Difficulty level: Easy
+📝 Description: In exactly 1 or 2 sentences, describe the task.
 💡 Bullet-point hints (clear, step-by-step, minimum 3 steps)
 
 Important guidelines:
-- Rotate and balance the difficulty so that Easy, Medium, and Advanced scenarios appear with roughly equal frequency. Do not favor any one difficulty.
+- Randomly choose one of: Easy each scenario. 
 - Make each scenario different from the previous one.
-- Rotate through different Git topics such as:
-  - Branching
-  - Commits
-  - Pull requests
-  - Rebasing
-  - Merging
-  - Conflict resolution
-  - Remote repositories
-  - GitHub workflows
+- Git initialization (git init)
+- Cloning repositories (git clone)
+- Staging changes (git add)
+- Committing changes (git commit)
+- Viewing history (git log, git status)
+- Branching
+- Switching branches
+- Merging branches
+
 - Avoid repetition. Provide fresh commands, use cases, and learning angles every time.
 
 Make the scenario engaging, realistic, and practical for developers to practice.`;
 
 function parseScenario(text: string) {
   const titleMatch = text.match(/🎯\s*(.*)/);
-  const diffMatch = text.match(/🔥\s*Difficulty level:\s*(.*)/);
+  // Accept both 'Difficulty level:' and 'Difficulty:' and allow for 'Hard' or 'Advanced'
+  const diffMatch = text.match(/🔥\s*Difficulty(?: level)?:\s*(Easy|Medium|Advanced|Hard)/i);
+  let difficulty = diffMatch ? diffMatch[1].trim() : "Unknown";
+  if (difficulty.toLowerCase() === "hard") difficulty = "Advanced";
+  // Capitalize first letter for consistency
+  difficulty = difficulty.charAt(0).toUpperCase() + difficulty.slice(1).toLowerCase();
   const descMatch = text.match(/📝\s*(.*)/);
   const hintsMatch = text.match(/💡[\s\S]*?(?:\n|^)([\s\S]*)/);
   let hints: string[] = [];
   if (hintsMatch && hintsMatch[1]) {
     hints = hintsMatch[1]
       .split(/\n|\r/)
-      .map(h => h.replace(/^[-•\d.\s]+/, "").trim())
+      .map(h => h.replace(/^[\-•\d.\s]+/, "").trim())
       .filter(Boolean);
   }
   return {
     title: titleMatch ? titleMatch[1].trim() : "Git Scenario",
-    difficulty: diffMatch ? diffMatch[1].trim() : "Unknown",
+    difficulty,
     description: descMatch ? descMatch[1].trim() : "",
     hints,
   };
@@ -102,7 +107,12 @@ const GeminiScenarioFrame: React.FC = () => {
   const handleGenerate = async () => {
     setError("");
     setRawError(null);
-    setScenario(null);
+    // Clear all scenario-related localStorage except API key
+    if (typeof window !== 'undefined') {
+      const apiKey = localStorage.getItem(GEMINI_API_KEY_STORAGE);
+      localStorage.clear();
+      if (apiKey) localStorage.setItem(GEMINI_API_KEY_STORAGE, apiKey);
+    }
     setShowHints(false);
     setLoading(true);
     try {
@@ -112,14 +122,21 @@ const GeminiScenarioFrame: React.FC = () => {
         setLoading(false);
         return;
       }
-      // setApiKey(key); // Removed as per edit hint
       const genAI = new GoogleGenerativeAI(key);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const result = await model.generateContent(PROMPT);
       const text = await result.response.text();
-      setScenario(parseScenario(text));
+      const parsed = parseScenario(text);
+      setScenario(parsed);
+      // Save scenario to localStorage for terminal integration
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('gemini_scenario', JSON.stringify(parsed));
+      }
+      // Dispatch a custom event to notify the terminal to reset
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('reset-terminal'));
+      }
     } catch (err: any) {
-      // If error is a quota error (429), show a simple message
       if (err?.message?.includes('429') || err?.message?.toLowerCase().includes('quota')) {
         setError('You have exceeded your daily Gemini API limit. Please try again tomorrow or use a different API key.');
         setRawError(null);
@@ -160,7 +177,7 @@ const GeminiScenarioFrame: React.FC = () => {
           rel="noopener noreferrer"
           className="text-blue-400 underline mb-2 text-base"
         >
-          Get your Gemini API key here
+          set your Gemini API key here
         </a>
         <div className="text-slate-400 text-xs mb-2">(Requires a Google account. Click the link, sign in, and copy your API key.)</div>
         <div className="bg-slate-800/80 rounded-xl p-6 mt-2 mb-8 text-slate-300 text-sm max-w-md w-full shadow-lg">
@@ -211,45 +228,74 @@ const GeminiScenarioFrame: React.FC = () => {
             Ready to Practice Git?
           </h1>
           <p className="text-xl text-slate-300 mb-6 max-w-2xl mx-auto">
-            Generate a new scenario to practice your Git skills. Each scenario comes with step-by-step hints to guide you through the solution.
+            Generate a new scenario to practice your Git skills in Below Git Terminal. Each scenario comes with step-by-step hints to guide you through the solution.
           </p>
-          {hasKey && (
-            <button
-              onClick={handleResetKey}
-              className="inline-block border border-red-400 text-red-400 px-4 py-2 rounded-lg text-sm font-semibold mb-8 hover:bg-red-400 hover:text-white transition-colors"
-              type="button"
-            >
-              Reset API Key
-            </button>
-          )}
+          {/* Removed Reset API Key button from here */}
           <div className="flex items-center justify-center gap-2 text-slate-500 text-sm mb-10">
             <Terminal className="w-4 h-4" />
             <span>Solve them in Below terminal for the best practice</span>
           </div>
+          {/* Restore the Generate New Scenario button for first time users */}
+          <button
+            onClick={handleGenerate}
+            disabled={loading}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold py-4 px-8 rounded-lg transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800 text-lg mb-4"
+          >
+            {loading ? (
+              <div className="flex items-center justify-center gap-3">
+                <RefreshCw className="w-6 h-6 animate-spin" />
+                Generating Scenario...
+              </div>
+            ) : (
+              "Generate New Scenario"
+            )}
+          </button>
+          <div className="mt-2 flex items-center justify-center gap-2 text-slate-500 text-sm">
+            <Terminal className="w-4 h-4" />
+            <span>Click above to get your first practice scenario</span>
+          </div>
         </div>
       )}
       {/* Scenario card spacing improved and modular */}
-      <div className="flex justify-center mt-16 mb-16"> {/* Use mt-16 for consistent gap below heading */}
-        <div className="w-full max-w-2xl">
-          <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden">
-            {scenario ? (
-              <div className="p-8">
+      {scenario && (
+        <div className="flex justify-center mt-16 mb-16"> {/* Use mt-16 for consistent gap below heading */}
+          <div className="w-full max-w-2xl">
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl shadow-2xl overflow-hidden relative">
+              {/* Add Reset API Key button to scenario card */}
+              <button
+                onClick={handleResetKey}
+                className="absolute top-4 right-4 border border-red-400 text-red-400 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-400 hover:text-white transition-colors z-30"
+                type="button"
+              >
+                Reset API Key
+              </button>
+              {loading && (
+                <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center z-20">
+                  <div className="flex flex-col items-center">
+                    <svg className="animate-spin h-10 w-10 text-blue-400 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
+                    <span className="text-blue-300 text-lg font-semibold">Generating Scenario...</span>
+                  </div>
+                </div>
+              )}
+              <div className={`p-8 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold text-white">Git based Problem Scenarios</h2>
-                  <button
-                    onClick={handleGenerate}
-                    className="text-slate-400 hover:text-white text-xl transition-colors disabled:opacity-50"
-                    title="Refresh scenario"
-                    disabled={loading}
-                    aria-label="Refresh scenario"
-                    type="button"
-                  >
-                    {loading ? (
-                      <svg className="animate-spin h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
-                    ) : (
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.635 19A9 9 0 1119 5.635" /></svg>
-                    )}
-                  </button>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={handleGenerate}
+                      className="text-slate-400 hover:text-white text-xl transition-colors disabled:opacity-50"
+                      title="Refresh scenario"
+                      disabled={loading}
+                      aria-label="Refresh scenario"
+                      type="button"
+                    >
+                      {loading ? (
+                        <svg className="animate-spin h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
+                      ) : (
+                        <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582M20 20v-5h-.581M5.635 19A9 9 0 1119 5.635" /></svg>
+                      )}
+                    </button>
+                    <h2 className="text-2xl font-bold text-white ml-2">Git based Problem Scenarios</h2>
+                  </div>
                 </div>
 
                 <div className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-6 mb-6">
@@ -310,51 +356,28 @@ const GeminiScenarioFrame: React.FC = () => {
                     )}
                   </button>
                 </div>
-              </div>
-            ) : (
-              <div className="p-8 text-center">
-                <button
-                  onClick={handleGenerate}
-                  disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-semibold py-4 px-8 rounded-lg transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800 text-lg"
-                >
-                  {loading ? (
-                    <div className="flex items-center justify-center gap-3">
-                      <RefreshCw className="w-6 h-6 animate-spin" />
-                      Generating Scenario...
+                {error && (
+                  <div className="mx-8 mb-8">
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                      <p className="text-red-400 text-sm">{error}</p>
+                      {rawError && (
+                        <details className="mt-2">
+                          <summary className="text-red-300 text-xs cursor-pointer hover:text-red-200">
+                            Show technical details
+                          </summary>
+                          <pre className="mt-2 text-xs text-red-300 bg-red-500/5 p-2 rounded overflow-auto">
+                            {JSON.stringify(rawError, null, 2)}
+                          </pre>
+                        </details>
+                      )}
                     </div>
-                  ) : (
-                    "Generate New Scenario"
-                  )}
-                </button>
-                
-                <div className="mt-6 flex items-center justify-center gap-2 text-slate-500 text-sm">
-                  <Terminal className="w-4 h-4" />
-                  <span>Click above to get your first practice scenario</span>
-                </div>
+                  </div>
+                )}
               </div>
-            )}
-
-            {error && (
-              <div className="mx-8 mb-8">
-                <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
-                  <p className="text-red-400 text-sm">{error}</p>
-                  {rawError && (
-                    <details className="mt-2">
-                      <summary className="text-red-300 text-xs cursor-pointer hover:text-red-200">
-                        Show technical details
-                      </summary>
-                      <pre className="mt-2 text-xs text-red-300 bg-red-500/5 p-2 rounded overflow-auto">
-                        {JSON.stringify(rawError, null, 2)}
-                      </pre>
-                    </details>
-                  )}
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
