@@ -51,9 +51,11 @@ const Terminal: React.FC = () => {
     const norm = cmd.trim().toLowerCase();
     if (norm.startsWith('git add')) return 'git add';
     if (norm.startsWith('git commit -m')) return 'git commit -m';
+    if (norm.startsWith('git checkout -b')) return 'git checkout -b';
     if (norm.startsWith('git checkout')) return 'git checkout';
     if (norm.startsWith('git merge')) return 'git merge';
     if (norm.startsWith('git branch')) return 'git branch';
+    if (norm.startsWith('git switch -c')) return 'git switch -c';
     if (norm.startsWith('git switch')) return 'git switch';
     if (norm.startsWith('git log')) return 'git log';
     if (norm.startsWith('git status')) return 'git status';
@@ -74,6 +76,64 @@ const Terminal: React.FC = () => {
     if (norm.startsWith('git bisect')) return 'git bisect';
     // fallback: first 2-3 words
     return norm.split(' ').slice(0, 3).join(' ');
+  }
+
+  // Tutor feedback for each command type
+  function getTutorFeedback(commandType: string, command: string): string {
+    switch (commandType) {
+      case 'git init':
+        return 'Initialized a new Git repository.';
+      case 'git add':
+        return 'You staged file(s) for commit.';
+      case 'git commit -m':
+        return 'You committed your changes.';
+      case 'git checkout -b':
+        return 'You created and switched to a new branch.';
+      case 'git checkout':
+        return 'You switched branches.';
+      case 'git branch':
+        return 'You created or listed branches.';
+      case 'git merge':
+        return 'You merged a branch.';
+      case 'git switch -c':
+        return 'You created and switched to a new branch.';
+      case 'git switch':
+        return 'You switched branches.';
+      case 'git log':
+        return 'You viewed the commit history.';
+      case 'git status':
+        return 'You checked the status of your repository.';
+      case 'git push':
+        return 'You pushed your changes to a remote repository.';
+      case 'git pull':
+        return 'You pulled changes from a remote repository.';
+      case 'git fetch':
+        return 'You fetched changes from a remote repository.';
+      case 'git clone':
+        return 'You cloned a repository.';
+      case 'git stash':
+        return 'You stashed your changes.';
+      case 'git reset':
+        return 'You reset your repository state.';
+      case 'git revert':
+        return 'You reverted a commit.';
+      case 'git rebase':
+        return 'You rebased your branch.';
+      case 'git cherry-pick':
+        return 'You cherry-picked a commit.';
+      case 'git tag':
+        return 'You created or managed tags.';
+      case 'git diff':
+        return 'You viewed the differences between files.';
+      case 'git show':
+        return 'You showed details of a commit.';
+      case 'git config':
+        return 'You configured Git settings.';
+      case 'git bisect':
+        return 'You used bisect to find a bug.';
+      default:
+        return '';
+    }
   }
 
   // Gemini: Extract command from hint
@@ -191,6 +251,10 @@ const Terminal: React.FC = () => {
             // Show congratulatory popup (set a flag or trigger a modal here if you want)
           } else {
             setCurrentStep(currentStep + 1);
+            const feedback = getTutorFeedback(userType, command);
+            if (feedback) {
+              addLine('output', `[Tutor]: ${feedback}`);
+            }
             addLine('output', '[Tutor]: Correct! You are on the right track.');
           }
         } else {
@@ -216,6 +280,10 @@ const Terminal: React.FC = () => {
             addLine('output', '[Tutor]: Correct! You have completed the scenario!');
           } else {
             setCurrentStep(currentStep + 1);
+            const feedback = getTutorFeedback(getCommandType(userCmd), command);
+            if (feedback) {
+              addLine('output', `[Tutor]: ${feedback}`);
+            }
             addLine('output', '[Tutor]: Correct! You are on the right track.');
           }
         } else {
