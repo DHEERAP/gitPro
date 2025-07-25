@@ -5,7 +5,7 @@ import ThemeToggle from './components/ThemeToggle';
 import Hero from './components/Hero';
 import GitCommands from './components/GitCommands';
 import Terminal from './components/Terminal';
-import Quiz from './components/Quiz';
+// import Quiz from './components/Quiz';
 import Footer from './components/Footer';
 import GeminiScenarioFrame from "./components/GeminiScenarioFrame";
 
@@ -40,8 +40,8 @@ function App() {
         </div>
         
         <div id="quiz">
-          <Quiz />
-       
+          {/* <Quiz />
+        */}
           <Footer />
         </div>
       </div>
